@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         reCAPTCHA Badge Visibility Checker
-// @version      1.7
+// @version      1.7.1
 // @description  Detect and show reCAPTCHA badge. Always assume Google-owned sites use it. Continuously check for late-injected elements. User can choose fade-out behavior on first use.
 // @author       EthanJoyce
 // @match        *://*/*
