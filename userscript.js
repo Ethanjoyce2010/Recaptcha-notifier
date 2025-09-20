@@ -12,16 +12,15 @@
 // ==/UserScript==
 (function() {
     'use strict';
-
+    
     // ====== CONFIGURATION ======
     const FADE_OUT_TIME = 2000; // milliseconds (only used if fade out is enabled)
-    const RESET_SETTINGS = true; // set to true to show choice dialog again (will auto-reset to false after use)
     // ============================
-
+    
     let alertShown = false;
     let badgeFound = false;
     let fadeOutEnabled = null; // Will be set based on user choice or saved preference
-
+    
     // Add styles for the alert box and choice dialog
     GM_addStyle(`
       .recaptcha-alert {
@@ -103,12 +102,64 @@
       }
     `);
 
+  // Preference helpers: try GM_* APIs (sync or promise), GM.* APIs, then localStorage fallback
+  async function getPref(key, defaultValue) {
+    try {
+      // Greasemonkey/Tampermonkey legacy functions
+      if (typeof GM_getValue === 'function') {
+        const value = GM_getValue(key, defaultValue);
+        // If it returned a Promise (modern GM), await it
+        if (value && typeof value.then === 'function') return await value;
+        return (typeof value === 'undefined') ? defaultValue : value;
+      }
+
+      // Newer GM.* API
+      if (typeof GM !== 'undefined' && typeof GM.getValue === 'function') {
+        const v = await GM.getValue(key, defaultValue);
+        return (typeof v === 'undefined') ? defaultValue : v;
+      }
+    } catch (e) {
+      // fallthrough to localStorage
+    }
+
+    try {
+      const raw = localStorage.getItem('recaptcha_' + key);
+      if (raw === null) return defaultValue;
+      return JSON.parse(raw);
+    } catch (e) {
+      return defaultValue;
+    }
+  }
+
+  async function setPref(key, value) {
+    try {
+      if (typeof GM_setValue === 'function') {
+        const res = GM_setValue(key, value);
+        if (res && typeof res.then === 'function') await res;
+        return;
+      }
+
+      if (typeof GM !== 'undefined' && typeof GM.setValue === 'function') {
+        await GM.setValue(key, value);
+        return;
+      }
+    } catch (e) {
+      // fallthrough to localStorage
+    }
+
+    try {
+      localStorage.setItem('recaptcha_' + key, JSON.stringify(value));
+    } catch (e) {
+      // ignore
+    }
+  }
+    
     function showChoiceDialog() {
         return new Promise((resolve) => {
             // Create overlay
             const overlay = document.createElement("div");
             overlay.className = "recaptcha-overlay";
-
+            
             // Create dialog
             const dialog = document.createElement("div");
             dialog.className = "recaptcha-choice-dialog";
@@ -120,67 +171,57 @@
                     <button class="recaptcha-choice-btn manual">Stay until clicked</button>
                 </div>
             `;
-
+            
             // Add event listeners
             const autoBtn = dialog.querySelector('.auto');
             const manualBtn = dialog.querySelector('.manual');
+            
+      autoBtn.addEventListener('click', async () => {
+        await setPref('fadeOutEnabled', true);
+        fadeOutEnabled = true;
+        document.body.removeChild(overlay);
+        resolve(true);
+      });
 
-            autoBtn.addEventListener('click', () => {
-                GM_setValue('fadeOutEnabled', true);
-                fadeOutEnabled = true;
-                document.body.removeChild(overlay);
-                resolve(true);
-            });
-
-            manualBtn.addEventListener('click', () => {
-                GM_setValue('fadeOutEnabled', false);
-                fadeOutEnabled = false;
-                document.body.removeChild(overlay);
-                resolve(false);
-            });
-
+      manualBtn.addEventListener('click', async () => {
+        await setPref('fadeOutEnabled', false);
+        fadeOutEnabled = false;
+        document.body.removeChild(overlay);
+        resolve(false);
+      });
+            
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
         });
     }
+    
+  async function initializeFadeOutSetting() {
+    const savedSetting = await getPref('fadeOutEnabled', null);
 
-    async function initializeFadeOutSetting() {
-        // Check if reset is requested
-        if (RESET_SETTINGS) {
-            console.log('reCAPTCHA Userscript: Reset requested, showing choice dialog...');
-            // Clear existing setting and show dialog
-            GM_setValue('fadeOutEnabled', null);
-            fadeOutEnabled = await showChoiceDialog();
-            // Note: The RESET_SETTINGS constant should be manually changed back to false in the script
-            return;
-        }
-
-        const savedSetting = GM_getValue('fadeOutEnabled', null);
-
-        if (savedSetting === null) {
-            // First time use - show choice dialog
-            fadeOutEnabled = await showChoiceDialog();
-        } else {
-            // Use saved setting
-            fadeOutEnabled = savedSetting;
-        }
+    if (savedSetting === null) {
+      // First time use - show choice dialog
+      fadeOutEnabled = await showChoiceDialog();
+    } else {
+      // Use saved setting
+      fadeOutEnabled = savedSetting;
     }
-
+  }
+    
     function showAlert(message) {
         if (alertShown) return;
         alertShown = true;
-
+        
         const alertBox = document.createElement("div");
         alertBox.className = "recaptcha-alert";
         alertBox.textContent = message;
-
+        
         // Remove on click
         alertBox.addEventListener("click", () => {
             alertBox.remove();
         });
-
+        
         document.body.appendChild(alertBox);
-
+        
         if (fadeOutEnabled) {
             setTimeout(() => {
                 alertBox.classList.add("fade-out");
@@ -192,7 +233,7 @@
             }, FADE_OUT_TIME);
         }
     }
-
+    
     function checkReCaptcha() {
         const badge = document.querySelector(".grecaptcha-badge");
         if (badge) {
@@ -205,7 +246,7 @@
         }
         return false;
     }
-
+    
     // Special case: Google-owned sites -> always assume yes
     function isGoogleSite() {
         return /\.google\./.test(window.location.hostname) ||
@@ -213,22 +254,22 @@
                /\.blogger\./.test(window.location.hostname) ||
                /\.gmail\./.test(window.location.hostname);
     }
-
+    
     window.addEventListener("load", async () => {
         // Initialize fade-out setting first
         await initializeFadeOutSetting();
-
+        
         setTimeout(() => {
             if (isGoogleSite()) {
                 showAlert("This Google site uses reCAPTCHA");
             } else if (!checkReCaptcha()) {
                 showAlert("This site does NOT use reCAPTCHA");
             }
-
+            
             // Watch for late injection
             const observer = new MutationObserver(() => checkReCaptcha());
             observer.observe(document.body, { childList: true, subtree: true });
-
+            
             // Poll every 1s until found
             const interval = setInterval(() => {
                 if (checkReCaptcha()) {
