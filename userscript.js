@@ -1,8 +1,10 @@
 // ==UserScript==
 // @name         reCAPTCHA Badge Visibility Notifier
-// @version      1.8
+// @version      1.8.1
 // @description  Detect and show reCAPTCHA badge. Always assume Google-owned sites use it. Continuously check for late-injected elements. User can choose fade-out behavior on first use.
 // @author       EthanJoyce
+// @namespace    https://github.com/Ethanjoyce2010/Recaptcha-notifier
+// @license      MIT
 // @match        *://*/*
 // @grant        GM_addStyle
 // @grant        GM_setValue
