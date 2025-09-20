@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         reCAPTCHA Badge Visibility Checker 
-
+// @name         reCAPTCHA Badge Visibility Checker
 // @version      1.3
 // @description  Detect and show reCAPTCHA badge. Always assume Google-owned sites use it. Continuously check for late-injected elements.
+// @author       EthanJoyce
 // @match        *://*/*
 // @grant        GM_addStyle
-// @author      EthanJoyce
+// @updateURL    https://raw.githubusercontent.com/Ethanjoyce2010/Recaptcha-notifier/refs/heads/main/userscript.js
+// @downloadURL  https://raw.githubusercontent.com/Ethanjoyce2010/Recaptcha-notifier/refs/heads/main/userscript.js
 // ==/UserScript==
 
 (function() {
