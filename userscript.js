@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         reCAPTCHA Badge Visibility Checker
-// @version      1.3
+// @version      1.4
 // @description  Detect and show reCAPTCHA badge. Always assume Google-owned sites use it. Continuously check for late-injected elements.
 // @author       EthanJoyce
 // @match        *://*/*
@@ -11,6 +11,11 @@
 
 (function() {
     'use strict';
+
+    // ====== CONFIGURATION ======
+    const FADE_OUT_ENABLED = false; // set to false = stays until clicked, true = auto fade after 2s
+    const FADE_OUT_TIME = 2000; // milliseconds (only used if fade out is enabled)
+    // ============================
 
     let alertShown = false;
     let badgeFound = false;
@@ -27,7 +32,7 @@
         border-radius: 6px;
         font-size: 14px;
         z-index: 999999;
-        opacity: 0.9;
+        opacity: 0.95;
         cursor: pointer;
         transition: opacity 0.5s ease-out;
       }
@@ -51,11 +56,12 @@
 
         document.body.appendChild(alertBox);
 
-        // Auto fade after 2s
-        setTimeout(() => {
-            alertBox.classList.add("fade-out");
-            setTimeout(() => alertBox.remove(), 500);
-        }, 2000);
+        if (FADE_OUT_ENABLED) {
+            setTimeout(() => {
+                alertBox.classList.add("fade-out");
+                setTimeout(() => alertBox.remove(), 500);
+            }, FADE_OUT_TIME);
+        }
     }
 
     function checkReCaptcha() {
@@ -87,11 +93,11 @@
                 showAlert("This site does NOT use reCAPTCHA");
             }
 
-            // Keep watching via MutationObserver
+            // Watch for late injection
             const observer = new MutationObserver(() => checkReCaptcha());
             observer.observe(document.body, { childList: true, subtree: true });
 
-            // Also keep polling every 1s just in case
+            // Poll every 1s until found
             const interval = setInterval(() => {
                 if (checkReCaptcha()) {
                     clearInterval(interval);
