@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         reCAPTCHA Badge Visibility Checker
-// @version      1.7.1
+// @name         reCAPTCHA Badge Visibility Notifier
+// @version      1.8
 // @description  Detect and show reCAPTCHA badge. Always assume Google-owned sites use it. Continuously check for late-injected elements. User can choose fade-out behavior on first use.
 // @author       EthanJoyce
 // @match        *://*/*
@@ -17,7 +17,8 @@
     const FADE_OUT_TIME = 2000; // milliseconds (only used if fade out is enabled)
     // ============================
     
-    let alertShown = false;
+  // Tracks the last alert type shown: 'present', 'absent', or null
+  let lastAlertType = null;
     let badgeFound = false;
     let fadeOutEnabled = null; // Will be set based on user choice or saved preference
     
@@ -109,7 +110,7 @@
       if (typeof GM_getValue === 'function') {
         const value = GM_getValue(key, defaultValue);
         // If it returned a Promise (modern GM), await it
-        if (value && typeof value.then === 'function') return await value;
+        if (value != null && typeof value.then === 'function') return await value;
         return (typeof value === 'undefined') ? defaultValue : value;
       }
 
@@ -154,7 +155,7 @@
     }
   }
     
-    function showChoiceDialog() {
+  function showChoiceDialog() {
         return new Promise((resolve) => {
             // Create overlay
             const overlay = document.createElement("div");
@@ -166,6 +167,8 @@
             dialog.innerHTML = `
                 <h3>reCAPTCHA Notification Settings</h3>
                 <p>How would you like reCAPTCHA notifications to behave?</p>
+                <p>(You can change this later by clicking the gear icon in notifications)</p>
+                <p>(Will apply when reloaded)</p>
                 <div class="recaptcha-choice-buttons">
                     <button class="recaptcha-choice-btn auto">Auto-fade (2s)</button>
                     <button class="recaptcha-choice-btn manual">Stay until clicked</button>
@@ -207,32 +210,52 @@
     }
   }
     
-    function showAlert(message) {
-        if (alertShown) return;
-        alertShown = true;
-        
-        const alertBox = document.createElement("div");
-        alertBox.className = "recaptcha-alert";
-        alertBox.textContent = message;
-        
-        // Remove on click
-        alertBox.addEventListener("click", () => {
+  function showAlert(message, type) {
+    // type is 'present' or 'absent'. Only suppress if it's identical to lastAlertType
+    if (type && lastAlertType === type) return;
+    lastAlertType = type || null;
+
+    const alertBox = document.createElement("div");
+    alertBox.className = "recaptcha-alert";
+
+    // Message container
+    const msg = document.createElement('span');
+    msg.textContent = message;
+    alertBox.appendChild(msg);
+
+    // Settings gear to reopen choice dialog
+    const gear = document.createElement('button');
+    gear.title = 'Notification settings';
+    gear.style.marginLeft = '10px';
+    gear.style.background = 'transparent';
+    gear.style.border = 'none';
+    gear.style.color = 'inherit';
+    gear.style.cursor = 'pointer';
+    gear.textContent = '⚙️';
+    gear.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await showChoiceDialog();
+    });
+    alertBox.appendChild(gear);
+
+    // Remove on click
+    alertBox.addEventListener("click", () => {
+      alertBox.remove();
+    });
+
+    document.body.appendChild(alertBox);
+
+    if (fadeOutEnabled) {
+      setTimeout(() => {
+        alertBox.classList.add("fade-out");
+        setTimeout(() => {
+          if (alertBox.parentNode) {
             alertBox.remove();
-        });
-        
-        document.body.appendChild(alertBox);
-        
-        if (fadeOutEnabled) {
-            setTimeout(() => {
-                alertBox.classList.add("fade-out");
-                setTimeout(() => {
-                    if (alertBox.parentNode) {
-                        alertBox.remove();
-                    }
-                }, 500);
-            }, FADE_OUT_TIME);
-        }
+          }
+        }, 500);
+      }, FADE_OUT_TIME);
     }
+  }
     
     function checkReCaptcha() {
         const badge = document.querySelector(".grecaptcha-badge");
