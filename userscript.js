@@ -1,10 +1,13 @@
 // ==UserScript==
 // @name         reCAPTCHA Badge Visibility Checker
-// @version      1.4
-// @description  Detect and show reCAPTCHA badge. Always assume Google-owned sites use it. Continuously check for late-injected elements.
+// @version      1.5
+// @description  Detect and show reCAPTCHA badge. Always assume Google-owned sites use it. Continuously check for late-injected elements. Includes menu option to toggle fade-out alerts.
 // @author       EthanJoyce
 // @match        *://*/*
 // @grant        GM_addStyle
+// @grant        GM_registerMenuCommand
+// @grant        GM_setValue
+// @grant        GM_getValue
 // @updateURL    https://raw.githubusercontent.com/Ethanjoyce2010/Recaptcha-notifier/refs/heads/main/userscript.js
 // @downloadURL  https://raw.githubusercontent.com/Ethanjoyce2010/Recaptcha-notifier/refs/heads/main/userscript.js
 // ==/UserScript==
@@ -12,13 +15,26 @@
 (function() {
     'use strict';
 
-    // ====== CONFIGURATION ======
-    const FADE_OUT_ENABLED = false; // set to false = stays until clicked, true = auto fade after 2s
-    const FADE_OUT_TIME = 2000; // milliseconds (only used if fade out is enabled)
-    // ============================
+    const FADE_OUT_TIME = 2000; // milliseconds
 
     let alertShown = false;
     let badgeFound = false;
+
+    // Load setting or default to true
+    let fadeOutEnabled = GM_getValue("fadeOutEnabled", true);
+
+    // Add a menu command to toggle fade setting
+    function registerMenu() {
+        GM_registerMenuCommand(
+            `Toggle Fade-Out (Currently: ${fadeOutEnabled ? "ON" : "OFF"})`,
+            () => {
+                fadeOutEnabled = !fadeOutEnabled;
+                GM_setValue("fadeOutEnabled", fadeOutEnabled);
+                alert(`Fade-Out is now ${fadeOutEnabled ? "ENABLED" : "DISABLED"}. Reload page to apply.`);
+            }
+        );
+    }
+    registerMenu();
 
     // Add styles for the alert box
     GM_addStyle(`
@@ -56,7 +72,7 @@
 
         document.body.appendChild(alertBox);
 
-        if (FADE_OUT_ENABLED) {
+        if (fadeOutEnabled) {
             setTimeout(() => {
                 alertBox.classList.add("fade-out");
                 setTimeout(() => alertBox.remove(), 500);
