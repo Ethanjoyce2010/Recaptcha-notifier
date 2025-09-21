@@ -31,6 +31,7 @@ Usage / Test
 Notes
 - Metadata in the userscript requests `GM_addStyle`, `GM_setValue`, and `GM_getValue`. The script also supports the modern `GM.*` promise-based API and falls back to `localStorage`.
 - If you want strict modern-GM behavior only, you can adjust the `@grant` or remove the fallback logic in the script.
+- I will review pull requests and will accept them if they fix something or help the script out.
 
 License
 - MIT
