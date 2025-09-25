@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         reCAPTCHA Badge Visibility Notifier
-// @version      1.8.1
+// @version      1.9
 // @description  Detect and show reCAPTCHA badge. Always assume Google-owned sites use it. Continuously check for late-injected elements. User can choose fade-out behavior on first use.
 // @author       EthanJoyce
 // @namespace    https://github.com/Ethanjoyce2010/Recaptcha-notifier
@@ -14,22 +14,22 @@
 // ==/UserScript==
 (function() {
     'use strict';
-    
+
     // ====== CONFIGURATION ======
     const FADE_OUT_TIME = 2000; // milliseconds (only used if fade out is enabled)
     // ============================
-    
+
   // Tracks the last alert type shown: 'present', 'absent', or null
   let lastAlertType = null;
     let badgeFound = false;
     let fadeOutEnabled = null; // Will be set based on user choice or saved preference
-    
+
     // Add styles for the alert box and choice dialog
     GM_addStyle(`
       .recaptcha-alert {
         position: fixed;
-        bottom: 20px;
-        right: 20px;
+        top: 20px;
+        left: 20px;
         background: #333;
         color: #fff;
         padding: 10px 15px;
@@ -39,6 +39,14 @@
         opacity: 0.95;
         cursor: pointer;
         transition: opacity 0.5s ease-out;
+        font-weight: normal;
+      }
+      .recaptcha-alert.recaptcha-red {
+        background: #d32f2f !important;
+        color: #fff !important;
+      }
+      .recaptcha-alert.recaptcha-bold {
+        font-weight: bold !important;
       }
       .recaptcha-alert.fade-out {
         opacity: 0;
@@ -156,13 +164,13 @@
       // ignore
     }
   }
-    
+
   function showChoiceDialog() {
         return new Promise((resolve) => {
             // Create overlay
             const overlay = document.createElement("div");
             overlay.className = "recaptcha-overlay";
-            
+
             // Create dialog
             const dialog = document.createElement("div");
             dialog.className = "recaptcha-choice-dialog";
@@ -176,11 +184,11 @@
                     <button class="recaptcha-choice-btn manual">Stay until clicked</button>
                 </div>
             `;
-            
+
             // Add event listeners
             const autoBtn = dialog.querySelector('.auto');
             const manualBtn = dialog.querySelector('.manual');
-            
+
       autoBtn.addEventListener('click', async () => {
         await setPref('fadeOutEnabled', true);
         fadeOutEnabled = true;
@@ -194,12 +202,12 @@
         document.body.removeChild(overlay);
         resolve(false);
       });
-            
+
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
         });
     }
-    
+
   async function initializeFadeOutSetting() {
     const savedSetting = await getPref('fadeOutEnabled', null);
 
@@ -211,14 +219,23 @@
       fadeOutEnabled = savedSetting;
     }
   }
-    
-  function showAlert(message, type) {
+
+  function showAlert(message, type, opts = {}) {
     // type is 'present' or 'absent'. Only suppress if it's identical to lastAlertType
     if (type && lastAlertType === type) return;
     lastAlertType = type || null;
 
     const alertBox = document.createElement("div");
     alertBox.className = "recaptcha-alert";
+
+    // Add red background if Google site or reCAPTCHA present
+    if (opts.isGoogle || opts.isRecaptcha) {
+      alertBox.classList.add('recaptcha-red');
+    }
+    // Add bold if Google site
+    if (opts.isGoogle) {
+      alertBox.classList.add('recaptcha-bold');
+    }
 
     // Message container
     const msg = document.createElement('span');
@@ -258,49 +275,116 @@
       }, FADE_OUT_TIME);
     }
   }
-    
-    function checkReCaptcha() {
-        const badge = document.querySelector(".grecaptcha-badge");
-        if (badge) {
-            badge.style.visibility = "visible"; // force visible
-            if (!badgeFound) {
-                showAlert("This site uses reCAPTCHA");
-                badgeFound = true;
-            }
+
+  let recaptchaNotified = false;
+  function checkReCaptcha() {
+    // Returns true if reCAPTCHA is detected by any heuristic.
+    // Heuristics: badge, .g-recaptcha or data-sitekey, grecaptcha object, script/iframe srcs, inline script text, rc-anchor-logo-text.
+    if (recaptchaNotified) return true;
+    try {
+      // 1) Visible badge
+      const badge = document.querySelector('.grecaptcha-badge');
+      if (badge) {
+        try { badge.style.visibility = 'visible'; } catch(e) {}
+        showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
+        recaptchaNotified = true;
+        return true;
+      }
+
+      // 1.5) <div class="rc-anchor-logo-text">reCAPTCHA</div>
+      const anchorLogo = Array.from(document.querySelectorAll('.rc-anchor-logo-text')).find(el => el.textContent && el.textContent.trim().toLowerCase() === 'recaptcha');
+      if (anchorLogo) {
+        showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
+        recaptchaNotified = true;
+        return true;
+      }
+
+      // 2) Common widget markers: g-recaptcha class or data-sitekey attribute
+      const widget = document.querySelector('.g-recaptcha, [data-sitekey]');
+      if (widget) {
+        showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
+        recaptchaNotified = true;
+        return true;
+      }
+
+      // 3) grecaptcha JS object (render, enterprise, etc.)
+      if (typeof window.grecaptcha !== 'undefined') {
+        try {
+          if (window.grecaptcha && (typeof window.grecaptcha.render === 'function' || window.grecaptcha.enterprise)) {
+            showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
+            recaptchaNotified = true;
             return true;
+          }
+        } catch (e) {}
+      }
+
+      // 4) External scripts that reference reCAPTCHA
+      const scripts = Array.from(document.getElementsByTagName('script'));
+      for (let i = 0; i < scripts.length; i++) {
+        const s = scripts[i];
+        const src = s.src || '';
+        if (src && /recaptcha|google.*recaptcha|recaptcha\/api/i.test(src)) {
+          showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
+          recaptchaNotified = true;
+          return true;
         }
-        return false;
+        // Inline script content may reference grecaptcha
+        if (!src && s.textContent && /grecaptcha|recaptcha/i.test(s.textContent)) {
+          showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
+          recaptchaNotified = true;
+          return true;
+        }
+      }
+
+      // 5) Iframes that load recaptcha content
+      const iframes = Array.from(document.getElementsByTagName('iframe'));
+      for (let i = 0; i < iframes.length; i++) {
+        const f = iframes[i];
+        const src = f.src || '';
+        if (src && /recaptcha|google.*recaptcha/i.test(src)) {
+          showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
+          recaptchaNotified = true;
+          return true;
+        }
+      }
+    } catch (e) {
+      // Swallow errors from odd pages
     }
-    
+
+    return false;
+  }
+
     // Special case: Google-owned sites -> always assume yes
-    function isGoogleSite() {
-        return /\.google\./.test(window.location.hostname) ||
-               /\.youtube\./.test(window.location.hostname) ||
-               /\.blogger\./.test(window.location.hostname) ||
-               /\.gmail\./.test(window.location.hostname);
-    }
-    
-    window.addEventListener("load", async () => {
-        // Initialize fade-out setting first
-        await initializeFadeOutSetting();
-        
-        setTimeout(() => {
-            if (isGoogleSite()) {
-                showAlert("This Google site uses reCAPTCHA");
-            } else if (!checkReCaptcha()) {
-                showAlert("This site does NOT use reCAPTCHA");
-            }
-            
-            // Watch for late injection
-            const observer = new MutationObserver(() => checkReCaptcha());
-            observer.observe(document.body, { childList: true, subtree: true });
-            
-            // Poll every 1s until found
-            const interval = setInterval(() => {
-                if (checkReCaptcha()) {
-                    clearInterval(interval);
-                }
-            }, 1000);
-        }, 1000);
-    });
+  function isGoogleSite() {
+    const host = window.location.hostname;
+    return host.endsWith('.google.com') ||
+         host.endsWith('.youtube.com') ||
+         host.endsWith('.blogger.com') ||
+         host.endsWith('.gmail.com');
+  }
+
+  window.addEventListener("load", async () => {
+    // Initialize fade-out setting first
+    await initializeFadeOutSetting();
+
+    setTimeout(() => {
+      if (isGoogleSite()) {
+        showAlert("This Google site uses reCAPTCHA", 'present', { isGoogle: true, isRecaptcha: true });
+        recaptchaNotified = true;
+      } else if (!checkReCaptcha()) {
+        showAlert("This site does NOT use reCAPTCHA", 'absent');
+      }
+
+      // Watch for late injection
+      const observer = new MutationObserver(() => checkReCaptcha());
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      // Poll every 1s until found
+      const interval = setInterval(() => {
+        if (recaptchaNotified || checkReCaptcha()) {
+          clearInterval(interval);
+        }
+      }, 1000);
+    }, 1000);
+  });
 })();
