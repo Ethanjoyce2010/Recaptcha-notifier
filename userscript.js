@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         reCAPTCHA Badge Visibility Notifier
-// @version      1.9
+// @version      1.9.1
 // @description  Detect and show reCAPTCHA badge. Always assume Google-owned sites use it. Continuously check for late-injected elements. User can choose fade-out behavior on first use.
 // @author       EthanJoyce
 // @namespace    https://github.com/Ethanjoyce2010/Recaptcha-notifier
@@ -276,26 +276,16 @@
     }
   }
 
-  let recaptchaNotified = false;
   function checkReCaptcha() {
     // Returns true if reCAPTCHA is detected by any heuristic.
-    // Heuristics: badge, .g-recaptcha or data-sitekey, grecaptcha object, script/iframe srcs, inline script text, rc-anchor-logo-text.
-    if (recaptchaNotified) return true;
+    // Heuristics: badge, .g-recaptcha or data-sitekey, grecaptcha object, script/iframe srcs, inline script text.
+    let found = false;
     try {
       // 1) Visible badge
       const badge = document.querySelector('.grecaptcha-badge');
       if (badge) {
         try { badge.style.visibility = 'visible'; } catch(e) {}
         showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
-        recaptchaNotified = true;
-        return true;
-      }
-
-      // 1.5) <div class="rc-anchor-logo-text">reCAPTCHA</div>
-      const anchorLogo = Array.from(document.querySelectorAll('.rc-anchor-logo-text')).find(el => el.textContent && el.textContent.trim().toLowerCase() === 'recaptcha');
-      if (anchorLogo) {
-        showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
-        recaptchaNotified = true;
         return true;
       }
 
@@ -303,7 +293,6 @@
       const widget = document.querySelector('.g-recaptcha, [data-sitekey]');
       if (widget) {
         showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
-        recaptchaNotified = true;
         return true;
       }
 
@@ -312,7 +301,6 @@
         try {
           if (window.grecaptcha && (typeof window.grecaptcha.render === 'function' || window.grecaptcha.enterprise)) {
             showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
-            recaptchaNotified = true;
             return true;
           }
         } catch (e) {}
@@ -325,13 +313,11 @@
         const src = s.src || '';
         if (src && /recaptcha|google.*recaptcha|recaptcha\/api/i.test(src)) {
           showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
-          recaptchaNotified = true;
           return true;
         }
         // Inline script content may reference grecaptcha
         if (!src && s.textContent && /grecaptcha|recaptcha/i.test(s.textContent)) {
           showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
-          recaptchaNotified = true;
           return true;
         }
       }
@@ -343,7 +329,6 @@
         const src = f.src || '';
         if (src && /recaptcha|google.*recaptcha/i.test(src)) {
           showAlert('This site uses reCAPTCHA', 'present', { isRecaptcha: true });
-          recaptchaNotified = true;
           return true;
         }
       }
@@ -370,7 +355,6 @@
     setTimeout(() => {
       if (isGoogleSite()) {
         showAlert("This Google site uses reCAPTCHA", 'present', { isGoogle: true, isRecaptcha: true });
-        recaptchaNotified = true;
       } else if (!checkReCaptcha()) {
         showAlert("This site does NOT use reCAPTCHA", 'absent');
       }
@@ -381,7 +365,7 @@
 
       // Poll every 1s until found
       const interval = setInterval(() => {
-        if (recaptchaNotified || checkReCaptcha()) {
+        if (checkReCaptcha()) {
           clearInterval(interval);
         }
       }, 1000);
